@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
 
 --// Variables
 local LocalPlayer = Players.LocalPlayer
@@ -19,13 +20,24 @@ local spectating = false
 local lockedTarget
 local savedCFrame
 local BodyVelocity
+local FreecamEnabled = false
+local CamConnection
+local LastFreecamPosition = Vector3.zero
+local MoveSpeed = 2
+local MouseSensitivity = 0.15
+local ToggleKey = Enum.KeyCode.L
+local TeleportKey = Enum.KeyCode.G
+local MinSpeed = 1
+local MaxSpeed = 10
+local TeleportDistance = 5
+local TeleportSpeed = 0.05
+local CameraRotation = Vector2.zero
 
 --// GUI Setup
 local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
 ScreenGui.Name = "UltimateHackMenu"
 
 local mainFrame = Instance.new("Frame", ScreenGui)
-mainFrame.Name = "MainFrame"
 mainFrame.Size = UDim2.new(0, 250, 0, 40)
 mainFrame.Position = UDim2.new(0, 10, 0, 10)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
@@ -34,9 +46,7 @@ mainFrame.BorderSizePixel = 0
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)
 
 local titleBar = Instance.new("TextButton", mainFrame)
-titleBar.Name = "TitleBar"
 titleBar.Size = UDim2.new(1, 0, 0, 40)
-titleBar.Position = UDim2.new(0, 0, 0, 0)
 titleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 titleBar.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleBar.Font = Enum.Font.GothamBold
@@ -46,13 +56,12 @@ titleBar.BorderSizePixel = 0
 Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 8)
 
 local buttonContainer = Instance.new("Frame", ScreenGui)
-buttonContainer.Name = "ButtonContainer"
 buttonContainer.Size = UDim2.new(0, 200, 0, 0)
 buttonContainer.Position = UDim2.new(0, 260, 0, 10)
 buttonContainer.BackgroundTransparency = 0.3
 buttonContainer.ClipsDescendants = true
 
--- Draggable Frame
+-- Drag logic
 local dragging, dragInput, dragStart, startPos
 local function updateInput(input)
     local delta = input.Position - dragStart
@@ -64,24 +73,18 @@ titleBar.InputBegan:Connect(function(input)
         dragStart = input.Position
         startPos = mainFrame.Position
         input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
         end)
     end
 end)
 titleBar.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
-        dragInput = input
-    end
+    if input.UserInputType == Enum.UserInputType.MouseMovement then dragInput = input end
 end)
 UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        updateInput(input)
-    end
+    if input == dragInput and dragging then updateInput(input) end
 end)
 
--- Toggle Menu
+-- Expand/collapse
 local isExpanded = false
 titleBar.MouseButton1Click:Connect(function()
     isExpanded = not isExpanded
@@ -90,7 +93,7 @@ titleBar.MouseButton1Click:Connect(function()
     titleBar.Text = isExpanded and "☰ Ultimate Menu ▼" or "☰ Ultimate Menu ▲"
 end)
 
--- Create Buttons
+-- Create buttons
 local function createButton(name, pos, text)
     local button = Instance.new("TextButton")
     button.Name = name
@@ -112,7 +115,7 @@ local flyButton = createButton("FlyButton", 5, "Fly: OFF")
 local noclipButton = createButton("NoclipButton", 35, "Noclip: OFF")
 local speedButton = createButton("SpeedButton", 65, "Speed: OFF")
 local jumpButton = createButton("JumpButton", 95, "Jump: OFF")
-local espButton = createButton("ESPButton", 125, "ESP: OFF")
+local espButton = createButton("ESPButton", 125, "ESP: ON")
 local flingButton = createButton("FlingButton", 155, "Tornado: OFF")
 local spectateButton = createButton("SpectateButton", 185, "Spectate: OFF")
 
@@ -128,7 +131,7 @@ targetBox.BackgroundTransparency = 0.3
 targetBox.BorderSizePixel = 0
 Instance.new("UICorner", targetBox).CornerRadius = UDim.new(0, 6)
 
--- ESP Setup
+-- ESP functions
 local function createBoxESP(player)
     local character = player.Character
     if character and not character:FindFirstChild("ESPBox") then
@@ -144,7 +147,6 @@ local function createBoxESP(player)
         end
     end
 end
-
 local function createNameESP(player)
     local character = player.Character
     if character and not character:FindFirstChild("NameBillboard") then
@@ -156,7 +158,6 @@ local function createNameESP(player)
             billboard.Adornee = head
             billboard.AlwaysOnTop = true
             billboard.StudsOffset = Vector3.new(0, 2, 0)
-
             local textLabel = Instance.new("TextLabel")
             textLabel.Parent = billboard
             textLabel.Size = UDim2.new(1, 0, 1, 0)
@@ -166,12 +167,10 @@ local function createNameESP(player)
             textLabel.TextStrokeTransparency = 0
             textLabel.Font = Enum.Font.SourceSansBold
             textLabel.TextScaled = true
-
             billboard.Parent = head
         end
     end
 end
-
 local function setupPlayer(player)
     player.CharacterAdded:Connect(function()
         repeat task.wait() until player.Character and player.Character:FindFirstChild("Head")
@@ -183,27 +182,33 @@ local function setupPlayer(player)
         createBoxESP(player)
     end
 end
+for _, p in ipairs(Players:GetPlayers()) do if p ~= LocalPlayer then setupPlayer(p) end end
+Players.PlayerAdded:Connect(function(p) if p ~= LocalPlayer then setupPlayer(p) end end)
 
-for _, p in ipairs(Players:GetPlayers()) do
-    if p ~= LocalPlayer then setupPlayer(p) end
-end
-Players.PlayerAdded:Connect(function(p)
-    if p ~= LocalPlayer then setupPlayer(p) end
-end)
-
--- Respawn-safe initialization
+-- Initialization
 local function Initialize()
     Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     Humanoid = Character:WaitForChild("Humanoid")
     HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
     Camera = workspace.CurrentCamera
 
-    -- Apply current state
+    -- Persistent flags
     if speedActive then Humanoid.WalkSpeed = 100 end
     if jumpActive then Humanoid.JumpPower = 250 end
-    HumanoidRootPart.CustomPhysicalProperties = PhysicalProperties.new(1000, 0.3, 0.5)
-
-    -- God Mode
+    if flyActive then
+        if BodyVelocity then BodyVelocity:Destroy() end
+        BodyVelocity = Instance.new("BodyVelocity", HumanoidRootPart)
+        BodyVelocity.Velocity = Vector3.zero
+        BodyVelocity.MaxForce = Vector3.new(400000, 400000, 400000)
+        RunService.Heartbeat:Connect(function()
+            if flyActive then
+                local moveDir = LocalPlayer:GetMouse().Hit.LookVector
+                BodyVelocity.Velocity = moveDir * 100
+            end
+        end)
+    end
+    local props = PhysicalProperties.new(1000, 0.3, 0.5)
+    HumanoidRootPart.CustomPhysicalProperties = props
     task.spawn(function()
         while Humanoid and Humanoid.Health > 0 do
             Humanoid.MaxHealth = math.huge
@@ -211,21 +216,109 @@ local function Initialize()
             task.wait(1)
         end
     end)
-
-    -- Resume fly
-    if flyActive then
-        if BodyVelocity then BodyVelocity:Destroy() end
-        BodyVelocity = Instance.new("BodyVelocity", HumanoidRootPart)
-        BodyVelocity.Velocity = Vector3.zero
-        BodyVelocity.MaxForce = Vector3.new(400000, 400000, 400000)
-    end
 end
-
 Initialize()
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(1)
     Initialize()
 end)
 
--- Add your other feature logic (fly, noclip, speed, jump, spectate, fling, freecam) below this line
--- using the `flyButton`, `noclipButton`, etc. just as before.
+-- Tornado (Fling)
+flingButton.MouseButton1Click:Connect(function()
+    if not tornadoActive then
+        local username = targetBox.Text
+        local targetPlayer = Players:FindFirstChild(username)
+        if targetPlayer then
+            lockedTarget = targetPlayer
+            savedCFrame = HumanoidRootPart.CFrame
+            tornadoActive = true
+            task.spawn(function()
+                while tornadoActive do
+                    if lockedTarget and lockedTarget.Character and lockedTarget.Character:FindFirstChild("HumanoidRootPart") then
+                        HumanoidRootPart.CFrame = lockedTarget.Character.HumanoidRootPart.CFrame
+                        HumanoidRootPart.AssemblyAngularVelocity = Vector3.new(0, 9999, 0)
+                    else
+                        tornadoActive = false
+                    end
+                    task.wait()
+                end
+            end)
+            flingButton.Text = "Tornado: ON"
+        else
+            warn("Target not found!")
+        end
+    else
+        tornadoActive = false
+        HumanoidRootPart.AssemblyAngularVelocity = Vector3.zero
+        task.wait(0.1)
+        if savedCFrame then HumanoidRootPart.CFrame = savedCFrame end
+        flingButton.Text = "Tornado: OFF"
+    end
+end)
+
+-- Spectate
+spectateButton.MouseButton1Click:Connect(function()
+    if not spectating then
+        local username = targetBox.Text
+        local targetPlayer = Players:FindFirstChild(username)
+        if targetPlayer then
+            lockedTarget = targetPlayer
+            Camera.CameraSubject = lockedTarget.Character:FindFirstChildWhichIsA("Humanoid") or lockedTarget.Character:FindFirstChild("HumanoidRootPart")
+            spectateButton.Text = "Spectate: ON"
+            spectating = true
+        else
+            warn("Spectate target not found!")
+        end
+    else
+        Camera.CameraSubject = LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid") or LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        spectateButton.Text = "Spectate: OFF"
+        spectating = false
+    end
+end)
+
+-- Freecam
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == ToggleKey then
+        FreecamEnabled = not FreecamEnabled
+        if FreecamEnabled then
+            Camera.CameraType = Enum.CameraType.Scriptable
+            UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+            CamConnection = RunService.RenderStepped:Connect(function()
+                local mouseDelta = UserInputService:GetMouseDelta()
+                CameraRotation += Vector2.new(-mouseDelta.Y, -mouseDelta.X) * MouseSensitivity
+                local rotation = CFrame.Angles(0, math.rad(CameraRotation.Y), 0) * CFrame.Angles(math.rad(CameraRotation.X), 0, 0)
+                local moveVec = Vector3.zero
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveVec += Camera.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveVec -= Camera.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveVec -= Camera.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveVec += Camera.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveVec += Vector3.new(0, 1, 0) end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then moveVec -= Vector3.new(0, 1, 0) end
+                local speed = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and MoveSpeed * 2 or MoveSpeed
+                Camera.CFrame = CFrame.new(Camera.CFrame.Position + moveVec.Unit * speed) * rotation
+                LastFreecamPosition = Camera.CFrame.Position
+            end)
+        else
+            if CamConnection then CamConnection:Disconnect() CamConnection = nil end
+            Camera.CameraType = Enum.CameraType.Custom
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        end
+    elseif input.KeyCode == TeleportKey then
+        local dir = (LastFreecamPosition - HumanoidRootPart.Position).Unit
+        local steps = math.floor((LastFreecamPosition - HumanoidRootPart.Position).Magnitude / TeleportDistance)
+        for i = 1, steps do
+            HumanoidRootPart.CFrame = CFrame.new(HumanoidRootPart.Position + dir * TeleportDistance)
+            task.wait(TeleportSpeed)
+        end
+    end
+end)
+
+pcall(function()
+    StarterGui:SetCore("SendNotification", {
+        Title = "Freecam & Teleport",
+        Text = "Press [L] to toggle Freecam, [G] to teleport. [Shift] to speed up.",
+        Duration = 6
+    })
+end)
+
